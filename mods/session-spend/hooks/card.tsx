@@ -29,6 +29,10 @@ export type CardData = {
   now: number
   columns: number
   cache?: CacheView
+  /** Every session's spend with this one's, and today's. */
+  allTime?: { total: number; today: number }
+  /** Opens the spending breakdown by conversation. */
+  onBreakdown?: () => void
 }
 
 /** The prompt cache as the card shows it, worked out by the module. */
@@ -107,7 +111,7 @@ const AGENT_COLUMNS = 10
 const recent = (turns: number[]) => turns.slice(-20)
 
 export const drawTerminal = (ui: ElementTable<'terminal'>, d: CardData) => {
-  const { Box, Text, Raster } = ui
+  const { Box, Text, Raster, Button } = ui
   const bit = toRaster(
     bitWithCoins(d.isWorking, d.frame, coinsFor(d.total), d.cache?.melt),
     BIT_PALETTE,
@@ -132,6 +136,23 @@ export const drawTerminal = (ui: ElementTable<'terminal'>, d: CardData) => {
           </Text>
           <Text dimColor> API spend this session</Text>
         </Text>
+        {(d.allTime || d.onBreakdown) && (
+          <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+            {d.allTime && (
+              <Text dimColor>
+                All sessions {usd(d.allTime.total)} · today {usd(d.allTime.today)}
+              </Text>
+            )}
+            {d.onBreakdown && (
+              <Button
+                key="breakdown"
+                label="Breakdown"
+                hotkey="b"
+                onPress={() => d.onBreakdown?.()}
+              />
+            )}
+          </Box>
+        )}
         {turns.length > 0 ? (
           <Text>
             <Text color="claude">{sparkText(turns)}</Text>
@@ -185,8 +206,11 @@ export const drawTerminal = (ui: ElementTable<'terminal'>, d: CardData) => {
   )
 }
 
-export const drawDesktop = (ui: Pick<ElementTable<'mobile'>, 'Box' | 'Text' | 'Svg'>, d: CardData) => {
-  const { Box, Text, Svg } = ui
+export const drawDesktop = (
+  ui: Pick<ElementTable<'mobile'>, 'Box' | 'Text' | 'Svg' | 'Button'>,
+  d: CardData,
+) => {
+  const { Box, Text, Svg, Button } = ui
   const shown = pickAgents(d.agents, 8)
   const hidden = d.agents.length - shown.length
   const turns = recent(d.turns)
@@ -207,6 +231,23 @@ export const drawDesktop = (ui: Pick<ElementTable<'mobile'>, 'Box' | 'Text' | 'S
           </Text>
           <Text dimColor> API spend this session</Text>
         </Text>
+        {(d.allTime || d.onBreakdown) && (
+          <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
+            {d.allTime && (
+              <Text dimColor>
+                All sessions {usd(d.allTime.total)} · today {usd(d.allTime.today)}
+              </Text>
+            )}
+            {d.onBreakdown && (
+              <Button
+                key="breakdown"
+                label="Breakdown"
+                hotkey="b"
+                onPress={() => d.onBreakdown?.()}
+              />
+            )}
+          </Box>
+        )}
         {turns.length > 0 ? (
           <Box flexDirection="row" gap={1} alignItems="flex-end">
             <Svg

@@ -1,7 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { nextCost, ratesFor } from './cache'
+import { nextCost } from './cache'
+import { costOfUsage, ratesFor } from './pricing'
 import { coinsFor, toRaster, bitWithCoins, BIT_PALETTE } from './sprites'
 
 const ctx = { window: 200000 }

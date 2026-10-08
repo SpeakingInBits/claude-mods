@@ -6,7 +6,7 @@ Mods for [Claude Code](https://claude.com/claude-code) from SpeakingInBits. Mods
 
 | Mod | What it does |
 | --- | --- |
-| [session-spend](mods/session-spend) | A card above the prompt shows Bit, a pixel-art critter who hops while Claude works and stacks coins as the spend grows. The card also has the session's API spend with a per-turn chart, plan usage meters (5-hour and 7-day windows) on a subscription, a pixel character for each subagent, and an ice cube that melts as the prompt cache nears expiry, with what the next prompt costs while the cache is warm and after it expires. The status line shows the running total (`API spend $1.30 (+$0.08 last turn)`). `/spend` gives a turn-by-turn breakdown, and `/spend card` hides or shows the card. |
+| [session-spend](mods/session-spend) | A card above the prompt shows Bit, a pixel-art critter who hops while Claude works and stacks coins as the spend grows. The card also has the session's API spend with a per-turn chart, plan usage meters (5-hour and 7-day windows) on a subscription, a pixel character for each subagent, and an ice cube that melts as the prompt cache nears expiry, with what the next prompt costs while the cache is warm and after it expires. The status line shows the running total (`API spend $1.30 (+$0.08 last turn)`). `/spend` gives a turn-by-turn breakdown, `/spend all` totals every session (by day, project and model), and `/spend card` hides or shows the card. |
 
 ## Install
 
@@ -19,6 +19,15 @@ At a Claude Code prompt:
 Answer `y` to add the marketplace, then choose a scope (user scope enables it in every session).
 
 The spend figure is the same estimate `/cost` reports, at list price or at your organization's own pricing if it has set one. On a Pro or Max subscription it shows what the usage would cost on the API, not what you're billed.
+
+### Spend across sessions
+
+`/spend all` adds up every session, and the card shows an "All sessions" line. Its **Breakdown** button (or `/spend conversations`) opens a dialog listing each conversation by title with its project, models and cost, sorted by cost or by date; Esc closes it. Two sources feed these:
+
+- **The ledger:** each session the mod runs in records its own spend, the same figure `/cost` reports, in `~/.claude/session-spend/ledger/`.
+- **Transcripts:** the mod prices the transcripts Claude Code saves under `~/.claude/projects/` at list price, so sessions from before the mod was installed count too. It reads them when a session starts, at most every 6 hours, re-reading only transcripts that changed. `/spend import` reads them all again. The results are kept in `~/.claude/session-spend/history/`, so the totals outlive Claude Code's cleanup of old transcripts.
+
+Where a session has a ledger, its exact figure is used; otherwise the transcript estimate.
 
 ### Settings
 
