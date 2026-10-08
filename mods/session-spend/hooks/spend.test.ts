@@ -1,12 +1,15 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { nextCost, ratesFor } from './cache'
 import { coinsFor, toRaster, bitWithCoins, BIT_PALETTE } from './sprites'
 
 const ctx = { window: 200000 }
 
+const clocks: ReturnType<typeof mock.clock>[] = []
+
 const engine = (on: On) => {
-  mock.clock(on, { now: Date.parse('2026-10-08T12:00:00Z') })
+  clocks.push(mock.clock(on, { now: Date.parse('2026-10-08T12:00:00Z') }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'agent-1' }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
@@ -17,6 +20,8 @@ const engine = (on: On) => {
   })
   return seen
 }
+
+const cents = (n: number) => Math.round(n * 10000)
 
 const BAND = {
   component: 'AbovePrompt',
@@ -118,4 +123,73 @@ test('/spend card hides the card', async ($, on) => {
     presentation: { isFullscreen: false, columns: 120 },
   })
   expect(ran.text).toBe('Spend card hidden.')
+})
+
+test('prices the next prompt from the model and its cache rates', () => {
+  expect(ratesFor('claude-opus-5-5', 1000)?.input).toBe(4)
+  expect(ratesFor('claude-opus-5', 1000)?.input).toBe(5)
+  expect(ratesFor('claude-sonnet-5-5[1m]', 1000)?.read).toBe(0.2)
+  expect(ratesFor('claude-haiku-5-5', 150_000)?.input).toBe(0.5)
+  expect(ratesFor('gpt-something', 1000)).toBeUndefined()
+
+  const window = { startedAt: 0, model: 'claude-opus-5-5', prefixTokens: 200_000, outputTokens: 2000 }
+  const fiveMinutes = nextCost(window, 300_000)!
+  expect(cents(fiveMinutes.warm)).toBe(cents(0.05))
+  expect(cents(fiveMinutes.cold)).toBe(cents(1.01))
+  expect(cents(nextCost(window, 3_600_000)!.cold)).toBe(cents(1.616))
+})
+
+test('the cache melts, warns before it expires, and prices the next prompt', async ($, on) => {
+  engine(on)
+  const clock = clocks.at(-1)!
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('turn.step', async function* () {
+    return {
+      turnId: 't1',
+      index: 0,
+      answer: 'done',
+      toolUses: [],
+      stopReason: 'end_turn',
+      usage: {
+        model: 'claude-opus-5-5',
+        input_tokens: 0,
+        cache_read_input_tokens: 190_000,
+        cache_creation_input_tokens: 10_000,
+        output_tokens: 2000,
+      },
+    }
+  })
+
+  const step = $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3 })
+  for await (const _ of step) {
+  }
+  await step.result
+
+  const term = await $.ui.mount({ plugin: 'session-spend', surface: 'terminal', ...BAND })
+  expect(await term.find({ type: 'Text', text: / 5m left/ })).toBeDefined()
+  expect(await term.find({ type: 'Raster', key: 'bit' })).toBeDefined()
+  await term.unmount()
+
+  const ui = await $.ui.mount({ plugin: 'session-spend', surface: 'desktop', ...BAND })
+  expect(await ui.find({ type: 'Text', text: '5m left' })).toBeDefined()
+  expect(
+    await ui.find({ type: 'Text', text: 'Next prompt ~$0.0500, ~$1.01 if expired' }),
+  ).toBeDefined()
+
+  await clock.advance(250_000)
+  expect(await ui.find({ type: 'Text', text: '50s left' })).toBeDefined()
+  expect(toasts).toEqual([
+    'Prompt cache expires in 60s. Next prompt ~$0.0500 now, ~$1.01 after it expires.',
+  ])
+
+  await clock.advance(60_000)
+  expect(await ui.find({ type: 'Text', text: 'expired' })).toBeDefined()
+  expect(
+    await ui.find({ type: 'Text', text: 'Next prompt re-caches 202.0k tok ~$1.01' }),
+  ).toBeDefined()
+  expect(toasts).toHaveLength(1)
 })

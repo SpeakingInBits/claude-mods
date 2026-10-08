@@ -45,7 +45,63 @@ export const BIT_PALETTE: Palette = {
   G: 0xf5c542,
   Y: 0xfff1a8,
   g: 0xb8860b,
+  h: 0xe6f7ff,
+  i: 0x9ad8f5,
+  d: 0x6bb8e0,
+  w: 0x5aa9e6,
 }
+
+// Bit's ice cube melts as the prompt cache nears expiry: stage 0 to 3.
+const ICE: Sprite[] = [
+  [
+    '..........',
+    '..........',
+    '.KKKKKKKK.',
+    '.KhhiiiiK.',
+    '.KhiiiiiK.',
+    '.KiiiiiiK.',
+    '.KiiiiidK.',
+    '.KiiiiddK.',
+    '.KKKKKKKK.',
+    '..........',
+  ],
+  [
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '.KKKKKKKK.',
+    '.KhhiiiiK.',
+    '.KiiiiidK.',
+    '.KKKKKKKK.',
+    '..w.......',
+    '.wwww.....',
+  ],
+  [
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '...KKKK...',
+    '...KhdK...',
+    '...KKKK...',
+    '.wwwwwwww.',
+  ],
+  [
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..........',
+    '..wwwwww..',
+    'wwwwwwwwww',
+  ],
+]
 
 const COIN_TOP = '.GYG.'
 const COIN_EDGE = 'ggggg'
@@ -54,15 +110,27 @@ const COIN_EDGE = 'ggggg'
 export const coinsFor = (usd: number): number =>
   usd <= 0 ? 0 : [0.05, 0.25, 1, 5, 20].filter(t => usd >= t).length + 1
 
-/** Bit, a gap, and a stack of up to six coins: 18 by 12 pixels. */
-export const bitWithCoins = (isWorking: boolean, frame: number, coins: number): Sprite => {
+/**
+ * Bit, a gap, and a stack of up to six coins (18 by 12 pixels), then the ice
+ * cube at its melt stage when there is a cache to show (29 by 12).
+ */
+export const bitWithCoins = (
+  isWorking: boolean,
+  frame: number,
+  coins: number,
+  melt?: number,
+): Sprite => {
   const body = isWorking && frame % 2 === 1 ? BIT_HOP : BIT_IDLE
   const stack = Array.from({ length: 12 }, () => '.....')
   for (let i = 0; i < Math.min(coins, 6); i++) {
     stack[11 - i * 2] = COIN_EDGE
     stack[10 - i * 2] = COIN_TOP
   }
-  return body.map((row, y) => `${row}.${stack[y]}`)
+  const ice = melt === undefined ? undefined : ICE[Math.max(0, Math.min(3, melt))]!
+  return body.map((row, y) => {
+    const base = `${row}.${stack[y]}`
+    return ice === undefined ? base : `${base}.${ice[y - 2] ?? '..........'}`
+  })
 }
 
 const AGENT_A: Sprite = [

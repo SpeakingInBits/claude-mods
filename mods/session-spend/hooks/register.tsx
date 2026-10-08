@@ -1,7 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { AgentState, SpendStep, Subagent } from '../types'
+import type { AgentState, CacheWindow, SpendStep, Subagent } from '../types'
+import { meltStage, nextCost, promptTokens, remainingMs, timeLeft, ttlMs, warnBeforeMs } from './cache'
+import type { CacheView } from './card'
 import { drawDesktop, drawTerminal, usd } from './card'
 
 const total = atom({ plugin: 'session-spend', key: 'total' } as const, 0)
@@ -11,6 +13,9 @@ const agents = atom({ plugin: 'session-spend', key: 'agents' } as const, [])
 const isWorking = atom({ plugin: 'session-spend', key: 'isWorking' } as const, false)
 const frame = atom({ plugin: 'session-spend', key: 'frame' } as const, 0)
 const isCardHidden = atom({ plugin: 'session-spend', key: 'isCardHidden' } as const, false)
+const cache = atom({ plugin: 'session-spend', key: 'cache' } as const, null)
+const cacheTick = atom({ plugin: 'session-spend', key: 'cacheTick' } as const, 0)
+const cacheWarnedFor = atom({ plugin: 'session-spend', key: 'cacheWarnedFor' } as const, 0)
 
 const FRAME_MS = 500
 
@@ -37,7 +42,67 @@ async function animate($: EngineInterface) {
   }
 }
 
-export const register: Register = on => {
+// The cache countdown ticks each second while the cache is warm, but the card
+// redraws only when what it shows changes.
+let cacheTicker: Timer | undefined
+let cacheShown = ''
+// Model requests seen since this module loaded, for /spend's cache line.
+let stepsSeen = 0
+
+async function cacheView($: EngineInterface, ttlSetting: string): Promise<CacheView | undefined> {
+  const c = await read($, cache)
+  if (c === null) return undefined
+  const ttl = ttlMs(ttlSetting, (await read($, rateLimits)).length > 0)
+  const remaining = remainingMs(c, await $.clock.now(), ttl)
+  const isInUse = await read($, isWorking)
+  return {
+    isInUse,
+    remaining,
+    ttl,
+    melt: isInUse ? 0 : meltStage(remaining, ttl),
+    tokens: promptTokens(c),
+    cost: nextCost(c, ttl),
+  }
+}
+
+async function tickCache($: EngineInterface, ttlSetting: string, isWarning: boolean) {
+  const view = await cacheView($, ttlSetting)
+  if (view === undefined) return
+  const shown = `${view.isInUse}:${view.melt}:${timeLeft(view.remaining)}`
+  if (shown !== cacheShown) {
+    cacheShown = shown
+    await update($, cacheTick, n => n + 1)
+  }
+  const c = await read($, cache)
+  const isDue =
+    !view.isInUse && view.remaining > 0 && view.remaining <= warnBeforeMs(view.ttl)
+  if (isWarning && isDue && c !== null && (await read($, cacheWarnedFor)) !== c.startedAt) {
+    await update($, cacheWarnedFor, () => c.startedAt)
+    $.ui.toast(
+      view.cost
+        ? `Prompt cache expires in ${timeLeft(view.remaining).replace(' left', '')}. ` +
+            `Next prompt ~${usd(view.cost.warm)} now, ~${usd(view.cost.cold)} after it expires.`
+        : `Prompt cache expires in ${timeLeft(view.remaining).replace(' left', '')}; ` +
+            `after that the next prompt re-caches the whole conversation.`,
+    )
+  }
+  if (view.remaining <= 0 && !view.isInUse && cacheTicker !== undefined) {
+    cacheTicker.cancel()
+    cacheTicker = undefined
+  }
+}
+
+async function watchCache($: EngineInterface, ttlSetting: string, isWarning: boolean) {
+  if (cacheTicker === undefined) {
+    cacheTicker = $.clock.every(1000, () => void tickCache($, ttlSetting, isWarning))
+  }
+  await tickCache($, ttlSetting, isWarning)
+}
+
+export const register: Register = (on, options) => {
+  const ttlSetting = String(options.cacheTtl ?? 'auto')
+  const isWarning = options.cacheWarning !== false
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'spend',
@@ -53,8 +118,38 @@ export const register: Register = on => {
       show($, cost, (await read($, steps)).at(-1)?.usd)
     }
     await animate($)
+    if ((await read($, cache)) !== null) {
+      await watchCache($, ttlSetting, isWarning)
+    }
 
     return ran
+  })
+
+  // Each main-thread model request reads and refreshes the prompt cache; its
+  // lifetime counts from the request's start.
+  on('turn.step', async function* ($, e, next) {
+    const startedAt = await $.clock.now()
+    const step = yield* next(e)
+    stepsSeen += 1
+    if (e.agentId === undefined) {
+      const u = step.usage
+      // Without the step's own counts, the session's live window says the same.
+      const prefixTokens = u
+        ? u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
+        : ((await $.session.usage()).context.tokens ?? 0)
+      if (prefixTokens > 0) {
+        const window: CacheWindow = {
+          startedAt,
+          model: u?.model || e.model,
+          prefixTokens,
+          outputTokens: u?.output_tokens ?? 0,
+        }
+        await update($, cache, () => window)
+        await watchCache($, ttlSetting, isWarning)
+      }
+    }
+
+    return step
   })
 
   on('session.measure', async ($, e, next) => {
@@ -124,6 +219,7 @@ export const register: Register = on => {
       )
     } else {
       await update($, isWorking, () => false)
+      cacheShown = ''
       // An agent whose end raised no turn (killed, dropped) is settled by the roster.
       const roster = new Map((await $.agent.list()).map(a => [a.id, a.status]))
       await update($, agents, list =>
@@ -154,6 +250,7 @@ export const register: Register = on => {
       frame: await read($, frame),
       now: await $.clock.now(),
       columns: e.props.bodyColumns,
+      cache: (await read($, cacheTick)) >= 0 ? await cacheView($, ttlSetting) : undefined,
     }
 
     return e.surface === 'terminal'
@@ -186,6 +283,18 @@ export const register: Register = on => {
       const priciest = list.reduce((a, b) => (b.usd > a.usd ? b : a))
       lines.push('', `Priciest step: ${usd(priciest.usd)}`)
     }
+    const view = await cacheView($, ttlSetting)
+    const ttlName = (ms: number) => (ms >= 3_600_000 ? '1h' : '5m')
+    lines.push(
+      '',
+      view === undefined
+        ? `Prompt cache: no main-thread request seen yet (${stepsSeen} model requests since the mod loaded)`
+        : `Prompt cache: ${view.isInUse ? 'warm, in use' : timeLeft(view.remaining)} ` +
+            `(${ttlName(view.ttl)} TTL, setting ${ttlSetting}), ${view.tokens.toLocaleString('en-US')} tokens` +
+            (view.cost
+              ? `; next prompt ~${usd(view.cost.warm)} warm, ~${usd(view.cost.cold)} if expired`
+              : ''),
+    )
     lines.push(
       '',
       'Estimated at list price (or your managed pricing); subscription plans are not billed per token.',

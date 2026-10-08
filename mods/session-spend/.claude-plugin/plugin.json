@@ -1,8 +1,23 @@
 {
   "name": "session-spend",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A pixel-art card with the session's API spend, plan usage and subagents, plus a status line total",
   "author": { "name": "SpeakingInBits", "url": "https://github.com/SpeakingInBits" },
   "repository": "https://github.com/SpeakingInBits/claude-mods",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cacheTtl": {
+      "type": "string",
+      "title": "Prompt cache TTL",
+      "description": "How long the prompt cache lives. auto assumes 1h on a subscription plan and 5m on per-token billing.",
+      "options": ["auto", "5m", "1h"],
+      "default": "auto"
+    },
+    "cacheWarning": {
+      "type": "boolean",
+      "title": "Warn before the cache expires",
+      "description": "Show a toast a minute before a 5m cache expires, or five minutes before a 1h cache.",
+      "default": true
+    }
+  }
 }
