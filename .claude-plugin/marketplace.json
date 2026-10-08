@@ -1,0 +1,12 @@
+{
+  "name": "speakinginbits-mods",
+  "description": "Claude Code mods from SpeakingInBits",
+  "owner": { "name": "SpeakingInBits", "url": "https://github.com/SpeakingInBits" },
+  "plugins": [
+    {
+      "name": "session-spend",
+      "source": "./mods/session-spend",
+      "description": "Shows the current session's API spend in the status line, with a /spend breakdown"
+    }
+  ]
+}
