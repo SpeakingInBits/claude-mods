@@ -6,7 +6,7 @@
     {
       "name": "session-spend",
       "source": "./mods/session-spend",
-      "description": "Shows the current session's API spend in the status line, with a /spend breakdown"
+      "description": "A pixel-art card with the session's API spend, plan usage and subagents, plus a status line total"
     }
   ]
 }

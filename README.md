@@ -6,7 +6,7 @@ Mods for [Claude Code](https://claude.com/claude-code) from SpeakingInBits. Mods
 
 | Mod | What it does |
 | --- | --- |
-| [session-spend](mods/session-spend) | Shows the current session's API spend in the status line (`API spend $1.30 (+$0.08 last turn)`). The `/spend` command breaks it down turn by turn. |
+| [session-spend](mods/session-spend) | A card above the prompt shows Bit, a pixel-art critter who hops while Claude works and stacks coins as the spend grows. The card also has the session's API spend with a per-turn chart, plan usage meters (5-hour and 7-day windows) on a subscription, and a pixel character for each subagent. The status line shows the running total (`API spend $1.30 (+$0.08 last turn)`). `/spend` gives a turn-by-turn breakdown, and `/spend card` hides or shows the card. |
 
 ## Install
 
