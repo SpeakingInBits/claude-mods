@@ -61,13 +61,36 @@ test('a ledger write is idempotent and splits spend by day', () => {
   const day1 = Date.parse('2026-10-07T12:00:00')
   const day2 = Date.parse('2026-10-08T12:00:00')
   const s = { id: 's', project: 'p', startedAt: day1 }
+  // Begun mid-session on the session's first day: all of it is that day's.
   const first = nextLedger(undefined, { ...s, usd: 0.5, now: day1 })
-  expect(first.days).toEqual({})
+  expect(first.days).toEqual({ '2026-10-07': 0.5 })
   const later = nextLedger(first, { ...s, usd: 1.5, now: day1 })
   expect(nextLedger(later, { ...s, usd: 1.5, now: day1 })).toEqual(later)
-  expect(later.days).toEqual({ '2026-10-07': 1 })
+  expect(later.days).toEqual({ '2026-10-07': 1.5 })
   const next = nextLedger(later, { ...s, usd: 2, now: day2 })
-  expect(next.days).toEqual({ '2026-10-07': 1, '2026-10-08': 0.5 })
+  expect(next.days).toEqual({ '2026-10-07': 1.5, '2026-10-08': 0.5 })
+})
+
+test('a ledger begun on a later day leaves earlier spend to the merge', () => {
+  const resumed = { id: 's', project: 'p', startedAt: Date.parse('2026-10-06T12:00:00') }
+  const now = Date.parse('2026-10-08T12:00:00')
+  const first = nextLedger(undefined, { ...resumed, usd: 5, now })
+  expect(first.days).toEqual({})
+  expect(nextLedger(first, { ...resumed, usd: 6, now }).days).toEqual({ '2026-10-08': 1 })
+})
+
+test('a ledger written before this fix heals on its next write', () => {
+  const old = {
+    id: 's',
+    project: 'p',
+    startedAt: Date.parse('2026-10-08T09:00:00'),
+    updatedAt: 0,
+    usd: 14.4,
+    days: { '2026-10-08': 2.4 },
+    dayBase: { date: '2026-10-08', usd: 12 },
+  }
+  const healed = nextLedger(old, { ...old, usd: 14.5, now: Date.parse('2026-10-08T15:00:00') })
+  expect(healed.days).toEqual({ '2026-10-08': 14.5 })
 })
 
 test('the ledger wins over the transcript, spreading earlier spend by its days', () => {

@@ -1,6 +1,6 @@
 {
   "name": "session-spend",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A pixel-art card with the session's API spend, plan usage and subagents, plus a status line total",
   "author": { "name": "SpeakingInBits", "url": "https://github.com/SpeakingInBits" },
   "repository": "https://github.com/SpeakingInBits/claude-mods",

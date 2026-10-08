@@ -65,19 +65,24 @@ export const nextLedger = (
   s: { id: string; project: string; startedAt: number; usd: number; now: number },
 ): LedgerEntry => {
   const today = dayKey(s.now)
-  const base =
+  const startedAt = prev?.startedAt ?? s.startedAt
+  const carried =
     prev === undefined
       ? { date: today, usd: s.usd }
       : prev.dayBase.date === today
         ? prev.dayBase
         : { date: today, usd: prev.usd }
+  // On the session's first day, all it spent before the ledger began was
+  // spent that day too; on a later day, mergeSpend spreads it as the
+  // transcript does.
+  const base = carried.date === dayKey(startedAt) ? { date: carried.date, usd: 0 } : carried
   const days = { ...prev?.days }
   const spentToday = s.usd - base.usd
   if (spentToday > 0) days[today] = spentToday
   return {
     id: s.id,
     project: s.project,
-    startedAt: prev?.startedAt ?? s.startedAt,
+    startedAt,
     updatedAt: s.now,
     usd: s.usd,
     days,
