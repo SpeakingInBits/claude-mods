@@ -6,7 +6,7 @@ Mods for [Claude Code](https://claude.com/claude-code) from SpeakingInBits. Mods
 
 | Mod | What it does |
 | --- | --- |
-| [session-spend](mods/session-spend) | A card above the prompt shows Bit, a pixel-art critter who hops while Claude works and stacks coins as the spend grows. The card's top line names the repository and the branch you're on (it follows `git switch`). The card also has the session's API spend with a per-turn chart, plan usage meters (5-hour and 7-day windows) on a subscription, a pixel character for each subagent, and a prompt cache bar that runs down to expiry, with what the next prompt costs while the cache is warm and after it expires. The status line shows the running total (`API spend $1.30 (+$0.08 last turn)`). `/spend` gives a turn-by-turn breakdown, `/spend all` totals every session (by day, project and model), and `/spend card` hides or shows the card. |
+| [session-spend](mods/session-spend) | A card above the prompt shows Bit, a pixel-art critter who hops while Claude works. The card's top line names the repository and the branch you're on (it follows `git switch`), or shows a no-source-control icon outside a git repository. The card also has the session's API spend with a per-turn chart, plan usage meters (5-hour and 7-day windows) on a subscription, a pixel character for each subagent, and a prompt cache bar that runs down to expiry, with what the next prompt costs while the cache is warm and after it expires. The status line shows the running total (`API spend $1.30 (+$0.08 last turn)`). `/spend` gives a turn-by-turn breakdown, `/spend all` totals every session (by day, project and model), and `/spend card` hides or shows the card. |
 
 ## Install
 

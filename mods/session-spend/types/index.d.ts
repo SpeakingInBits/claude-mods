@@ -65,7 +65,8 @@ declare module 'claude-code' {
       frame: number
       isCardHidden: boolean
       cache: CacheWindow | null
-      workspace: Workspace | null
+      /** `none` outside a git repository; null until first read. */
+      workspace: Workspace | 'none' | null
       cacheTick: number
       cacheWarnedFor: number
       allTime: AllTime | null

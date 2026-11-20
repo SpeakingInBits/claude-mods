@@ -42,28 +42,11 @@ export const BIT_PALETTE: Palette = {
   H: 0xf2a07b,
   W: 0xffffff,
   E: 0x1d1d28,
-  G: 0xf5c542,
-  Y: 0xfff1a8,
-  g: 0xb8860b,
 }
 
-const COIN_TOP = '.GYG.'
-const COIN_EDGE = 'ggggg'
-
-/** How many coins Bit stands beside: one more each time the spend passes a tier. */
-export const coinsFor = (usd: number): number =>
-  usd <= 0 ? 0 : [0.05, 0.25, 1, 5, 20].filter(t => usd >= t).length + 1
-
-/** Bit, a gap, and a stack of up to six coins (18 by 12 pixels). */
-export const bitWithCoins = (isWorking: boolean, frame: number, coins: number): Sprite => {
-  const body = isWorking && frame % 2 === 1 ? BIT_HOP : BIT_IDLE
-  const stack = Array.from({ length: 12 }, () => '.....')
-  for (let i = 0; i < Math.min(coins, 6); i++) {
-    stack[11 - i * 2] = COIN_EDGE
-    stack[10 - i * 2] = COIN_TOP
-  }
-  return body.map((row, y) => `${row}.${stack[y]}`)
-}
+/** Bit, hopping on odd frames while Claude works (12 by 12 pixels). */
+export const bitSprite = (isWorking: boolean, frame: number): Sprite =>
+  isWorking && frame % 2 === 1 ? BIT_HOP : BIT_IDLE
 
 const AGENT_A: Sprite = [
   '...KK...',
@@ -237,6 +220,28 @@ export const sparkText = (values: number[]): string => {
   return values
     .map(v => SPARK[max > 0 ? Math.min(7, Math.floor((v / max) * 7.999)) : 0])
     .join('')
+}
+
+/**
+ * The source control icon (a branch: two commits on a stem, one off it)
+ * inside a red "no" sign, at text height, for a session outside a repository.
+ */
+export const noSourceControlSvg = (size = 18): string => {
+  const gray = '#8b8b9a'
+  const red = '#e5484d'
+  const node = (x: number, y: number) =>
+    `<circle cx="${x}" cy="${y}" r="1.9" fill="none" stroke="${gray}" stroke-width="1.6"/>`
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">` +
+    `<g stroke-linecap="round">` +
+    node(9, 6.5) +
+    node(9, 17.5) +
+    node(15.5, 8.5) +
+    `<path d="M9 8.4V15.6M15.5 10.4C15.5 13.4 9 12.6 9 15.6" fill="none" stroke="${gray}" stroke-width="1.6"/>` +
+    `<circle cx="12" cy="12" r="10.4" fill="none" stroke="${red}" stroke-width="2.2"/>` +
+    `<path d="M4.65 4.65L19.35 19.35" stroke="${red}" stroke-width="2.2"/>` +
+    `</g></svg>`
+  )
 }
 
 export const meterColor = (percent: number): number =>

@@ -21,10 +21,10 @@ async function git($: EngineInterface, args: string[]): Promise<string> {
   return ran.exitCode === 0 ? ran.stdout.trim() : ''
 }
 
-/** Reads the repository and branch now; null outside a git repository. */
-export async function readWorkspace($: EngineInterface): Promise<Workspace | null> {
+/** Reads the repository and branch now; `none` outside a git repository. */
+export async function readWorkspace($: EngineInterface): Promise<Workspace | 'none'> {
   const repo = await $.session.repo()
-  if (repo === null) return null
+  if (repo === null) return 'none'
   const name = repoName(repo.remote, repo.root)
   const branch = await git($, ['branch', '--show-current'])
   if (branch !== '') return { repo: name, branch, isDetached: false }
@@ -32,5 +32,7 @@ export async function readWorkspace($: EngineInterface): Promise<Workspace | nul
   return { repo: name, branch: sha, isDetached: sha !== '' }
 }
 
-export const sameWorkspace = (a: Workspace | null, b: Workspace | null): boolean =>
-  a?.repo === b?.repo && a?.branch === b?.branch && a?.isDetached === b?.isDetached
+export const sameWorkspace = (
+  a: Workspace | 'none' | null,
+  b: Workspace | 'none' | null,
+): boolean => JSON.stringify(a) === JSON.stringify(b)
