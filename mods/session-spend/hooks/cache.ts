@@ -32,12 +32,6 @@ export const nextCost = (c: CacheWindow, ttl: number): NextCost | undefined => {
 export const remainingMs = (c: CacheWindow, now: number, ttl: number): number =>
   Math.max(0, c.startedAt + ttl - now)
 
-/** 0 a full cube, 1 melting, 2 nearly gone, 3 a puddle (expired). */
-export const meltStage = (remaining: number, ttl: number): number => {
-  const f = remaining / ttl
-  return f <= 0 ? 3 : f < 0.2 ? 2 : f < 0.5 ? 1 : 0
-}
-
 export const timeLeft = (ms: number): string => {
   if (ms <= 0) return 'expired'
   const s = Math.ceil(ms / 1000)

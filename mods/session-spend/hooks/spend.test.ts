@@ -3,7 +3,8 @@ import type { On } from 'claude-code'
 
 import { nextCost } from './cache'
 import { costOfUsage, ratesFor } from './pricing'
-import { coinsFor, toRaster, bitWithCoins, BIT_PALETTE } from './sprites'
+import { toRaster, bitSprite, BIT_PALETTE } from './sprites'
+import { repoName } from './workspace'
 
 const ctx = { window: 200000 }
 
@@ -28,6 +29,7 @@ const BAND = {
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
     maxRows: 20,
     bodyColumns: 120,
@@ -54,15 +56,11 @@ test('a measurement without a cost change leaves the status alone', async ($, on
   expect(seen).toEqual([])
 })
 
-test('Bit gathers more coins as the spend grows', () => {
-  expect(coinsFor(0)).toBe(0)
-  expect(coinsFor(0.01)).toBe(1)
-  expect(coinsFor(0.3)).toBe(3)
-  expect(coinsFor(50)).toBe(6)
-  const raster = toRaster(bitWithCoins(false, 0, 3), BIT_PALETTE)
-  expect(raster.columns).toBe(18)
+test('Bit draws as a 12 by 12 sprite, six cells tall in the terminal', () => {
+  const raster = toRaster(bitSprite(false, 0), BIT_PALETTE)
+  expect(raster.columns).toBe(12)
   expect(raster.rows).toBe(6)
-  expect(raster.cells.length).toBe(Math.ceil((18 * 6 * 12) / 3) * 4)
+  expect(raster.cells.length).toBe(Math.ceil((12 * 6 * 12) / 3) * 4)
 })
 
 test('the card shows spend, plan usage and subagents on every surface', async ($, on) => {
@@ -140,7 +138,7 @@ test('prices the next prompt from the model and its cache rates', () => {
   expect(cents(nextCost(window, 3_600_000)!.cold)).toBe(cents(1.616))
 })
 
-test('the cache melts, warns before it expires, and prices the next prompt', async ($, on) => {
+test('the cache counts down, warns before it expires, and prices the next prompt', async ($, on) => {
   engine(on)
   const clock = clocks.at(-1)!
   const toasts: string[] = []
@@ -193,4 +191,74 @@ test('the cache melts, warns before it expires, and prices the next prompt', asy
     await ui.find({ type: 'Text', text: 'Next prompt re-caches 202.0k tok ~$1.01' }),
   ).toBeDefined()
   expect(toasts).toHaveLength(1)
+})
+
+test('names the repository from its remote, else its folder', () => {
+  expect(repoName('https://github.com/SpeakingInBits/claude-mods.git', 'E:/x/ClaudeMods')).toBe(
+    'claude-mods',
+  )
+  expect(repoName('git@github.com:owner/tool.git', '/home/me/tool-copy')).toBe('tool')
+  expect(repoName(null, 'E:\\Code\\Projects\\ClaudeMods')).toBe('ClaudeMods')
+})
+
+test('the card shows the repository and branch, and follows a switch', async ($, on) => {
+  engine(on)
+  const clock = clocks.at(-1)!
+  let branch = 'main\n'
+  on('session.repo', () => ({
+    value: {
+      root: 'E:/Code/ClaudeMods',
+      remote: 'https://github.com/o/claude-mods.git',
+      internal: false,
+      name: null,
+    },
+  }))
+  on('process.run', ($, e) => ({
+    value: {
+      exitCode: 0,
+      stdout: e.argv[1] === 'branch' ? branch : 'abc1234\n',
+      stderr: '',
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
+  }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: ctx, rateLimits: [] } }))
+  on('agent.list', () => ({ value: [] }))
+
+  await $.session.start({ cwd: 'E:/Code/ClaudeMods', surface: 'terminal', isInteractive: true })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'session-spend', surface, ...BAND })
+    expect(await ui.find({ type: 'Text', text: 'claude-mods' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: ' on ' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'main' })).toBeDefined()
+    await ui.unmount()
+  }
+
+  branch = '\n'
+  await clock.advance(15_000)
+  const ui = await $.ui.mount({ plugin: 'session-spend', surface: 'desktop', ...BAND })
+  expect(await ui.find({ type: 'Text', text: ' detached at ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'abc1234' })).toBeDefined()
+})
+
+test('outside a repository the card shows no source control', async ($, on) => {
+  engine(on)
+  on('session.repo', () => ({ value: null }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: ctx, rateLimits: [] } }))
+  on('agent.list', () => ({ value: [] }))
+
+  await $.session.start({ cwd: 'E:/Scratch', surface: 'terminal', isInteractive: true })
+
+  const term = await $.ui.mount({ plugin: 'session-spend', surface: 'terminal', ...BAND })
+  expect(await term.find({ type: 'Text', text: '⊘' })).toBeDefined()
+  expect(await term.find({ type: 'Text', text: ' No source control' })).toBeDefined()
+  await term.unmount()
+
+  const ui = await $.ui.mount({ plugin: 'session-spend', surface: 'desktop', ...BAND })
+  expect(await ui.find({ type: 'Text', text: 'No source control' })).toBeDefined()
 })
