@@ -1,6 +1,6 @@
 import type { ElementTable } from 'claude-code'
 
-import type { RateLimit, Subagent } from '../types'
+import type { RateLimit, Subagent, Workspace } from '../types'
 import type { NextCost } from './cache'
 import { timeLeft } from './cache'
 import {
@@ -29,6 +29,8 @@ export type CardData = {
   now: number
   columns: number
   cache?: CacheView
+  /** The repository and branch the session works in. */
+  workspace?: Workspace
   /** Every session's spend with this one's, and today's. */
   allTime?: { total: number; today: number }
   /** Opens the spending breakdown by conversation. */
@@ -40,7 +42,6 @@ export type CacheView = {
   isInUse: boolean
   remaining: number
   ttl: number
-  melt: number
   tokens: number
   cost?: NextCost
 }
@@ -68,6 +69,8 @@ const cacheColorHex = (c: CacheView): number => {
 const cacheFraction = (c: CacheView): number => (c.isInUse ? 1 : c.remaining / c.ttl)
 
 export const usd = (n: number): string => (n < 1 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`)
+
+const branchWord = (w: Workspace): string => (w.isDetached ? ' detached at ' : ' on ')
 
 const tokens = (n: number): string =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
@@ -113,7 +116,7 @@ const recent = (turns: number[]) => turns.slice(-20)
 export const drawTerminal = (ui: ElementTable<'terminal'>, d: CardData) => {
   const { Box, Text, Raster, Button } = ui
   const bit = toRaster(
-    bitWithCoins(d.isWorking, d.frame, coinsFor(d.total), d.cache?.melt),
+    bitWithCoins(d.isWorking, d.frame, coinsFor(d.total)),
     BIT_PALETTE,
   )
   const showBit = d.columns >= bit.columns + 2 + 30
@@ -130,6 +133,18 @@ export const drawTerminal = (ui: ElementTable<'terminal'>, d: CardData) => {
     <Box flexDirection="row" gap={2}>
       {showBit && <Raster key="bit" {...bit} />}
       <Box flexDirection="column" width={Math.min(STATS_COLUMNS, d.columns)}>
+        {d.workspace && d.workspace.branch !== '' && (
+          <Text wrap="truncate-end">
+            <Text bold>{d.workspace.repo}</Text>
+            <Text dimColor>{branchWord(d.workspace)}</Text>
+            <Text color="success">{d.workspace.branch}</Text>
+          </Text>
+        )}
+        {d.workspace && d.workspace.branch === '' && (
+          <Text wrap="truncate-end" bold>
+            {d.workspace.repo}
+          </Text>
+        )}
         <Text>
           <Text bold color="claude">
             {usd(d.total)}
@@ -216,15 +231,22 @@ export const drawDesktop = (
   const turns = recent(d.turns)
   const coins = coinsFor(d.total)
   const cache = d.cache
-  const melt = ['a full ice cube', 'a melting ice cube', 'a nearly melted ice cube', 'a puddle']
+  const ws = d.workspace
 
   return (
     <Box flexDirection="row" gap={2} flexWrap="wrap" alignItems="center">
       <Svg
-        source={toSvg(bitWithCoins(d.isWorking, d.frame, coins, cache?.melt), BIT_PALETTE, 4)}
-        alt={`Bit, ${d.isWorking ? 'hopping while Claude works' : 'standing by'}, beside ${coins} coin${coins === 1 ? '' : 's'}${cache ? ` and ${melt[cache.melt]}` : ''}`}
+        source={toSvg(bitWithCoins(d.isWorking, d.frame, coins), BIT_PALETTE, 4)}
+        alt={`Bit, ${d.isWorking ? 'hopping while Claude works' : 'standing by'}, beside ${coins} coin${coins === 1 ? '' : 's'}`}
       />
       <Box flexDirection="column" gap={0}>
+        {ws && (
+          <Text>
+            <Text bold>{ws.repo}</Text>
+            {ws.branch !== '' && <Text dimColor>{branchWord(ws)}</Text>}
+            {ws.branch !== '' && <Text color="success">{ws.branch}</Text>}
+          </Text>
+        )}
         <Text>
           <Text bold color="claude">
             {usd(d.total)}

@@ -1,0 +1,36 @@
+// The repository and branch the session works in, for the card's top line.
+
+import type { EngineInterface } from 'claude-code'
+
+import type { Workspace } from '../types'
+
+/** The repository's name: the remote's last path segment, else the root folder's. */
+export const repoName = (remote: string | null, root: string): string => {
+  const fromRemote = remote
+    ?.trim()
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '')
+    .split(/[/:]/)
+    .at(-1)
+  const folder = root.replaceAll('\\', '/').replace(/\/+$/, '').split('/').at(-1)
+  return fromRemote || folder || root
+}
+
+async function git($: EngineInterface, args: string[]): Promise<string> {
+  const ran = await $.process.run(['git', ...args], { timeoutMs: 5000 })
+  return ran.exitCode === 0 ? ran.stdout.trim() : ''
+}
+
+/** Reads the repository and branch now; null outside a git repository. */
+export async function readWorkspace($: EngineInterface): Promise<Workspace | null> {
+  const repo = await $.session.repo()
+  if (repo === null) return null
+  const name = repoName(repo.remote, repo.root)
+  const branch = await git($, ['branch', '--show-current'])
+  if (branch !== '') return { repo: name, branch, isDetached: false }
+  const sha = await git($, ['rev-parse', '--short', 'HEAD'])
+  return { repo: name, branch: sha, isDetached: sha !== '' }
+}
+
+export const sameWorkspace = (a: Workspace | null, b: Workspace | null): boolean =>
+  a?.repo === b?.repo && a?.branch === b?.branch && a?.isDetached === b?.isDetached

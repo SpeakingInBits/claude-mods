@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { AgentState, AllTime, CacheWindow, SpendStep, Subagent } from '../types'
-import { meltStage, nextCost, promptTokens, remainingMs, timeLeft, ttlMs, warnBeforeMs } from './cache'
+import { nextCost, promptTokens, remainingMs, timeLeft, ttlMs, warnBeforeMs } from './cache'
 import type { CacheView, CardData } from './card'
 import { BREAKDOWN_PANE, drawBreakdown } from './breakdown'
 import { drawDesktop, drawTerminal, usd } from './card'
@@ -19,6 +19,7 @@ import {
   projectName,
   summarize,
 } from './history'
+import { readWorkspace, sameWorkspace } from './workspace'
 
 const total = atom({ plugin: 'session-spend', key: 'total' } as const, 0)
 const steps = atom({ plugin: 'session-spend', key: 'steps' } as const, [])
@@ -28,6 +29,7 @@ const isWorking = atom({ plugin: 'session-spend', key: 'isWorking' } as const, f
 const frame = atom({ plugin: 'session-spend', key: 'frame' } as const, 0)
 const isCardHidden = atom({ plugin: 'session-spend', key: 'isCardHidden' } as const, false)
 const cache = atom({ plugin: 'session-spend', key: 'cache' } as const, null)
+const workspace = atom({ plugin: 'session-spend', key: 'workspace' } as const, null)
 const cacheTick = atom({ plugin: 'session-spend', key: 'cacheTick' } as const, 0)
 const cacheWarnedFor = atom({ plugin: 'session-spend', key: 'cacheWarnedFor' } as const, 0)
 const allTime = atom({ plugin: 'session-spend', key: 'allTime' } as const, null)
@@ -39,6 +41,7 @@ const isBreakdownRefreshing = atom(
 )
 
 const FRAME_MS = 500
+const WORKSPACE_EVERY_MS = 15_000
 
 function show($: EngineInterface, now: number, last?: number) {
   const delta = last !== undefined && last > 0 ? ` (+${usd(last)} last turn)` : ''
@@ -276,6 +279,26 @@ async function catchUpHistory($: EngineInterface) {
   }
 }
 
+// The branch is read at the start, after each turn and shell command, and on a
+// slow timer for switches made outside the session; the card redraws on a change.
+let workspaceTicker: Timer | undefined
+let isReadingWorkspace = false
+
+async function refreshWorkspace($: EngineInterface) {
+  if (isReadingWorkspace) return
+  isReadingWorkspace = true
+  try {
+    const next = await readWorkspace($)
+    if (!sameWorkspace(next, await read($, workspace))) {
+      await update($, workspace, () => next)
+    }
+  } catch {
+    // The card shows the last repository and branch it read.
+  } finally {
+    isReadingWorkspace = false
+  }
+}
+
 // The cache countdown ticks each second while the cache is warm, but the card
 // redraws only when what it shows changes.
 let cacheTicker: Timer | undefined
@@ -293,7 +316,6 @@ async function cacheView($: EngineInterface, ttlSetting: string): Promise<CacheV
     isInUse,
     remaining,
     ttl,
-    melt: isInUse ? 0 : meltStage(remaining, ttl),
     tokens: promptTokens(c),
     cost: nextCost(c, ttl),
   }
@@ -302,7 +324,7 @@ async function cacheView($: EngineInterface, ttlSetting: string): Promise<CacheV
 async function tickCache($: EngineInterface, ttlSetting: string, isWarning: boolean) {
   const view = await cacheView($, ttlSetting)
   if (view === undefined) return
-  const shown = `${view.isInUse}:${view.melt}:${timeLeft(view.remaining)}`
+  const shown = `${view.isInUse}:${timeLeft(view.remaining)}`
   if (shown !== cacheShown) {
     cacheShown = shown
     await update($, cacheTick, n => n + 1)
@@ -354,6 +376,8 @@ export const register: Register = (on, options) => {
       await writeOwnLedger($, cost).catch(() => undefined)
     }
     $.clock.after(3000, () => void catchUpHistory($))
+    await refreshWorkspace($)
+    workspaceTicker ??= $.clock.every(WORKSPACE_EVERY_MS, () => void refreshWorkspace($))
     await animate($)
     if ((await read($, cache)) !== null) {
       await watchCache($, ttlSetting, isWarning)
@@ -410,6 +434,21 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // A shell command may switch the branch (git switch, git checkout).
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    void refreshWorkspace($)
+
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
+    const ran = await next(e)
+    void refreshWorkspace($)
+
+    return ran
+  }).catch(($, e, next) => next(e))
+
   on('prompt.submit', async ($, e, next) => {
     await update($, agents, list => list.filter(a => a.state === 'running'))
 
@@ -458,6 +497,7 @@ export const register: Register = (on, options) => {
     } else {
       await update($, isWorking, () => false)
       cacheShown = ''
+      void refreshWorkspace($)
       // An agent whose end raised no turn (killed, dropped) is settled by the roster.
       const roster = new Map((await $.agent.list()).map(a => [a.id, a.status]))
       await update($, agents, list =>
@@ -489,6 +529,7 @@ export const register: Register = (on, options) => {
       now: await $.clock.now(),
       columns: e.props.bodyColumns,
       cache: (await read($, cacheTick)) >= 0 ? await cacheView($, ttlSetting) : undefined,
+      workspace: (await read($, workspace)) ?? undefined,
     }
     data.onBreakdown = () => void openBreakdown($)
     const all = await read($, allTime)

@@ -242,6 +242,7 @@ test('the session keeps a ledger that /spend all counts as exact', async ($, on)
     component: 'AbovePrompt',
     props: {
       hasSurvey: false,
+      isCollapsed: false,
       isWorking: false,
       maxRows: 20,
       bodyColumns: 120,
@@ -291,6 +292,7 @@ test('the card button opens the breakdown as a dialog, sortable and closable', a
     component: 'AbovePrompt',
     props: {
       hasSurvey: false,
+      isCollapsed: false,
       isWorking: false,
       maxRows: 20,
       bodyColumns: 140,

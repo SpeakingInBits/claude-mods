@@ -11,6 +11,15 @@ export type CacheWindow = {
   outputTokens: number
 }
 
+/** The repository the session works in and its checked-out branch. */
+export type Workspace = {
+  /** The `origin` remote's repository name, else the repository folder's name. */
+  repo: string
+  /** The branch, or the short commit on a detached HEAD; empty when neither reads. */
+  branch: string
+  isDetached: boolean
+}
+
 /** Spend in every other session, and the running session's share of today. */
 export type AllTime = {
   othersTotal: number
@@ -56,6 +65,7 @@ declare module 'claude-code' {
       frame: number
       isCardHidden: boolean
       cache: CacheWindow | null
+      workspace: Workspace | null
       cacheTick: number
       cacheWarnedFor: number
       allTime: AllTime | null

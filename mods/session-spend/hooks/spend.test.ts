@@ -4,6 +4,7 @@ import type { On } from 'claude-code'
 import { nextCost } from './cache'
 import { costOfUsage, ratesFor } from './pricing'
 import { coinsFor, toRaster, bitWithCoins, BIT_PALETTE } from './sprites'
+import { repoName } from './workspace'
 
 const ctx = { window: 200000 }
 
@@ -28,6 +29,7 @@ const BAND = {
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
     maxRows: 20,
     bodyColumns: 120,
@@ -140,7 +142,7 @@ test('prices the next prompt from the model and its cache rates', () => {
   expect(cents(nextCost(window, 3_600_000)!.cold)).toBe(cents(1.616))
 })
 
-test('the cache melts, warns before it expires, and prices the next prompt', async ($, on) => {
+test('the cache counts down, warns before it expires, and prices the next prompt', async ($, on) => {
   engine(on)
   const clock = clocks.at(-1)!
   const toasts: string[] = []
@@ -193,4 +195,55 @@ test('the cache melts, warns before it expires, and prices the next prompt', asy
     await ui.find({ type: 'Text', text: 'Next prompt re-caches 202.0k tok ~$1.01' }),
   ).toBeDefined()
   expect(toasts).toHaveLength(1)
+})
+
+test('names the repository from its remote, else its folder', () => {
+  expect(repoName('https://github.com/SpeakingInBits/claude-mods.git', 'E:/x/ClaudeMods')).toBe(
+    'claude-mods',
+  )
+  expect(repoName('git@github.com:owner/tool.git', '/home/me/tool-copy')).toBe('tool')
+  expect(repoName(null, 'E:\\Code\\Projects\\ClaudeMods')).toBe('ClaudeMods')
+})
+
+test('the card shows the repository and branch, and follows a switch', async ($, on) => {
+  engine(on)
+  const clock = clocks.at(-1)!
+  let branch = 'main\n'
+  on('session.repo', () => ({
+    value: {
+      root: 'E:/Code/ClaudeMods',
+      remote: 'https://github.com/o/claude-mods.git',
+      internal: false,
+      name: null,
+    },
+  }))
+  on('process.run', ($, e) => ({
+    value: {
+      exitCode: 0,
+      stdout: e.argv[1] === 'branch' ? branch : 'abc1234\n',
+      stderr: '',
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
+  }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: undefined }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: ctx, rateLimits: [] } }))
+  on('agent.list', () => ({ value: [] }))
+
+  await $.session.start({ cwd: 'E:/Code/ClaudeMods', surface: 'terminal', isInteractive: true })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'session-spend', surface, ...BAND })
+    expect(await ui.find({ type: 'Text', text: 'claude-mods' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: ' on ' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'main' })).toBeDefined()
+    await ui.unmount()
+  }
+
+  branch = '\n'
+  await clock.advance(15_000)
+  const ui = await $.ui.mount({ plugin: 'session-spend', surface: 'desktop', ...BAND })
+  expect(await ui.find({ type: 'Text', text: ' detached at ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'abc1234' })).toBeDefined()
 })
